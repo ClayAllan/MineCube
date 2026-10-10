@@ -4,7 +4,20 @@
 
 ## 游戏截图
 
-![MineCube 游戏画面](screenshots/1.png)
+<table>
+  <tr>
+    <td width="50%"><img src="screenshots/1.png" alt="截图1"></td>
+    <td width="50%"><img src="screenshots/2.png" alt="截图2"></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="screenshots/3.png" alt="截图3"></td>
+    <td width="50%"><img src="screenshots/4.png" alt="截图4"></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="screenshots/5.png" alt="截图5"></td>
+    <td width="50%"><img src="screenshots/6.png" alt="截图6"></td>
+  </tr>
+</table>
 
 在一个三维雷区中寻路。每个已探索的安全格会显示它周围 3×3×3 区域内的地雷数量，
 你需要靠这些数字推断风险，从起点走到终点。踩中地雷会损失一条生命，生命耗尽即失败。
