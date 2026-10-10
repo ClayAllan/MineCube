@@ -1,5 +1,11 @@
 # Minecube：3D 扫雷迷宫
 
+[🎮 在线试玩，无需安装](https://clayallan.github.io/MineCube/)
+
+## 游戏截图
+
+![MineCube 游戏画面](screenshots/gameplay.png)
+
 在一个三维雷区中寻路。每个已探索的安全格会显示它周围 3×3×3 区域内的地雷数量，
 你需要靠这些数字推断风险，从起点走到终点。踩中地雷会损失一条生命，生命耗尽即失败。
 
