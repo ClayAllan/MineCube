@@ -21,6 +21,7 @@ import { CellInspector } from './CellInspector';
 import { EndScreen } from './EndScreen';
 import { GameBoard3D } from './GameBoard3D';
 import { GameHUD } from './GameHUD';
+import { LayerMinimap } from './LayerMinimap';
 import { AnalysisPanel } from './AnalysisPanel';
 import { LayerControls } from './LayerControls';
 import { Legend } from './Legend';
@@ -52,6 +53,8 @@ export function GameScreen({
   // 第一人称的镜头角度（纯视图状态，不进 game state）
   const [yaw, setYaw] = useState(0);
   const [pitch, setPitch] = useState(0);
+  const [moveHints, setMoveHints] = useState(true);
+  const [showMinimap, setShowMinimap] = useState(true);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const firstPerson = state.viewMode === 'first-person';
 
@@ -252,6 +255,22 @@ export function GameScreen({
           </button>
           <button
             type="button"
+            className={`btn btn--sm${moveHints ? ' btn--active' : ''}`}
+            onClick={() => setMoveHints((v) => !v)}
+            title="在玩家周围 6 个相邻格表面浮动显示对应按键指引"
+          >
+            指引徽标：{moveHints ? '开' : '关'}
+          </button>
+          <button
+            type="button"
+            className={`btn btn--sm${showMinimap ? ' btn--active' : ''}`}
+            onClick={() => setShowMinimap((v) => !v)}
+            title="在左侧栏显示 2D 俯视层切片雷达小地图"
+          >
+            平面雷达：{showMinimap ? '开' : '关'}
+          </button>
+          <button
+            type="button"
             className={`btn btn--sm${firstPerson ? ' btn--active' : ''}`}
             onClick={toggleViewMode}
             title="第一人称：镜头站在你所在的格子里，拖动鼠标环顾，方向键左右转身"
@@ -260,10 +279,19 @@ export function GameScreen({
           </button>
           <button
             type="button"
+            className="btn btn--sm btn--primary"
+            onClick={() => dispatch({ type: 'NEW_MAP' })}
+            title="换一个新随机种子生成全新地图"
+          >
+            新地图
+          </button>
+          <button
+            type="button"
             className="btn btn--sm"
             onClick={() => dispatch({ type: 'RESTART_SAME_SEED' })}
+            title="使用当前相同的种子重新开始（复盘用）"
           >
-            重新开始
+            重玩本局
           </button>
           <button type="button" className="btn btn--sm btn--ghost" onClick={onBackToSetup}>
             返回设置
@@ -279,6 +307,18 @@ export function GameScreen({
           transition={{ duration: 0.5, ease: 'easeOut' }}
         >
           <GameHUD state={state} playerCell={playerCell} />
+          {showMinimap && map ? (
+            <LayerMinimap
+              map={map}
+              player={state.player}
+              selected={state.selected}
+              slice={state.slice}
+              revealEnd={revealEnd}
+              onMove={(direction) => dispatch({ type: 'MOVE', direction })}
+              onSelect={(position) => dispatch({ type: 'SELECT_CELL', position })}
+              onFlag={handleFlag}
+            />
+          ) : null}
         </motion.aside>
 
         <section
@@ -307,7 +347,10 @@ export function GameScreen({
                 firstPerson={firstPerson}
                 yaw={yaw}
                 pitch={pitch}
+                directionMap={directionMap}
+                moveHints={moveHints}
                 onViewForwardChange={setViewForward}
+                onMove={(direction) => dispatch({ type: 'MOVE', direction })}
                 onSelect={handleSelect}
                 onFlag={handleFlag}
               />

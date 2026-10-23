@@ -325,7 +325,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     case 'BACK_TO_SETUP':
       return {
-        ...createInitialState(state.config),
+        ...createInitialState({ ...state.config, seed: randomSeedString() }),
         gameId: state.gameId,
         soundEnabled: state.soundEnabled,
         cameraRelative: state.cameraRelative,

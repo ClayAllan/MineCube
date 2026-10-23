@@ -158,12 +158,16 @@ export function EndScreen({
           <button
             type="button"
             className="btn btn--primary"
+            onClick={() => dispatch({ type: 'NEW_MAP' })}
+          >
+            再来一局（新地图）
+          </button>
+          <button
+            type="button"
+            className="btn"
             onClick={() => dispatch({ type: 'RESTART_SAME_SEED' })}
           >
-            使用相同种子重玩
-          </button>
-          <button type="button" className="btn" onClick={() => dispatch({ type: 'NEW_MAP' })}>
-            生成新地图
+            重玩本局（相同种子）
           </button>
           <button type="button" className="btn" onClick={onViewMap}>
             查看完整地图

@@ -238,6 +238,26 @@ function renderLabel(label: string): HTMLCanvasElement | null {
     return canvas;
   }
 
+  if (label.startsWith('hint:')) {
+    const text = label.slice(5);
+    const cx = SIZE / 2;
+    const cy = SIZE / 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 46, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+    ctx.fill();
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = '#22d3ee';
+    ctx.stroke();
+
+    ctx.font = '900 48px "Segoe UI", "PingFang SC", "Microsoft YaHei", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ecfeff';
+    ctx.fillText(text, cx, cy - 2);
+    return canvas;
+  }
+
   if (label === 'mine') {
     drawMine(ctx);
   } else if (label === 'flag') {

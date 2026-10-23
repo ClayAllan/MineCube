@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { DEFAULT_CONFIG, STORAGE_KEY } from '../game/constants';
 import { normalizeConfig } from '../game/mapGenerator';
+import { randomSeedString } from '../game/seededRandom';
 import type { MapConfig } from '../game/types';
 
 /**
@@ -8,14 +9,14 @@ import type { MapConfig } from '../game/types';
  * 这是可选增强功能：读写失败（隐私模式、存储被禁用等）时静默降级为默认配置。
  */
 export function loadStoredConfig(): MapConfig {
-  if (typeof window === 'undefined') return DEFAULT_CONFIG;
+  if (typeof window === 'undefined') return { ...DEFAULT_CONFIG, seed: randomSeedString() };
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_CONFIG;
+    if (!raw) return { ...DEFAULT_CONFIG, seed: randomSeedString() };
     const parsed = JSON.parse(raw) as Partial<MapConfig>;
-    return normalizeConfig({ ...DEFAULT_CONFIG, ...parsed });
+    return normalizeConfig({ ...DEFAULT_CONFIG, ...parsed, seed: randomSeedString() });
   } catch {
-    return DEFAULT_CONFIG;
+    return { ...DEFAULT_CONFIG, seed: randomSeedString() };
   }
 }
 

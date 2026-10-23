@@ -54,7 +54,11 @@ export function StartScreen({
   const [density, setDensity] = useState(initialConfig.mineDensity);
   const [rockDensity, setRockDensity] = useState(initialConfig.rockDensity);
   const [lives, setLives] = useState(initialConfig.lives);
-  const [seed, setSeed] = useState(initialConfig.seed);
+  const [seed, setSeed] = useState(
+    initialConfig.seed && initialConfig.seed !== 'minecube'
+      ? initialConfig.seed
+      : randomSeedString(),
+  );
   const [presetId, setPresetId] = useState(initialConfig.presetId);
   const [difficulty, setDifficultyState] = useState<DifficultyOptions>(initialConfig.difficulty);
 
@@ -109,6 +113,7 @@ export function StartScreen({
     setLives(preset.lives);
     setDifficultyState(preset.difficulty);
     setLockCube(isCube(preset.dims));
+    setSeed(randomSeedString());
   };
 
   const setAxis = (axis: keyof Dims, value: number) => {

@@ -39,7 +39,7 @@ export interface CellCubeProps {
   /** 是否响应鼠标（切片外的格子不参与交互） */
   interactive: boolean;
   /** 射线穿过的全部格子（由近及远），用于深度穿透点击 */
-  onSelect: (chain: RayChain) => void;
+  onSelect: (chain: RayChain, nativeEvent?: MouseEvent) => void;
   onFlag: (chain: RayChain) => void;
   onHover: (x: number, y: number, z: number, entering: boolean) => void;
 }
@@ -96,7 +96,7 @@ function CellCubeImpl({
 
   const handleClick = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation();
-    onSelect(chainFromEvent(event));
+    onSelect(chainFromEvent(event), event.nativeEvent);
   };
 
   const handleContextMenu = (event: ThreeEvent<MouseEvent>) => {

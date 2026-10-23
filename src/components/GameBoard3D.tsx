@@ -3,8 +3,9 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
-import { forwardIdFromView } from '../game/cameraRelative';
-import { positionToIndex, sixNeighbors } from '../game/neighbors';
+import { forwardIdFromView, type DirectionMap } from '../game/cameraRelative';
+import { DIRECTIONS } from '../game/constants';
+import { addDelta, inBounds, manhattan, positionToIndex, sixNeighbors } from '../game/neighbors';
 import { getCellVisual } from '../game/selectors';
 import type {
   AnalysisState,
@@ -230,6 +231,11 @@ function PlayerMarker({ position }: { position: [number, number, number] }) {
           toneMapped={false}
         />
       </mesh>
+      {/* 水平地面参考光环，明确指示当前所在的水平面 */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.22, 0]} raycast={NO_RAYCAST}>
+        <ringGeometry args={[0.22, 0.45, 32]} />
+        <meshBasicMaterial color="#22d3ee" transparent opacity={0.28} side={THREE.DoubleSide} />
+      </mesh>
       <pointLight color="#22d3ee" intensity={2.2} distance={4} />
     </group>
   );
@@ -383,6 +389,9 @@ interface SceneProps {
   difficulty: DifficultyOptions;
   /** 第一人称模式：玩家自身的格子与标记要隐藏，否则镜头会卡在方块里 */
   firstPerson: boolean;
+  directionMap: DirectionMap;
+  moveHints: boolean;
+  onMove: (direction: DirectionId) => void;
   onSelect: (position: Position | null) => void;
   onFlag: (position: Position) => void;
 }
@@ -398,6 +407,9 @@ function Scene({
   analysisResult,
   difficulty,
   firstPerson,
+  directionMap,
+  moveHints,
+  onMove,
   onSelect,
   onFlag,
 }: SceneProps) {
@@ -418,7 +430,7 @@ function Scene({
 
   // 稳定的回调，保证 CellCube 的 memo 生效
   const handleSelect = useCallback(
-    (chain: RayChain) => {
+    (chain: RayChain, nativeEvent?: MouseEvent) => {
       if (chain.length === 0) return;
       const key = chainKey(chain);
       // 在同一位置重复点击时，沿射线依次向内切换，从而选中被外壳挡住的格子
@@ -426,9 +438,26 @@ function Scene({
         chainRef.current.key === key
           ? { key, index: (chainRef.current.index + 1) % chain.length }
           : { key, index: 0 };
-      onSelect(chain[chainRef.current.index]!);
+      const target = chain[chainRef.current.index]!;
+
+      // 相邻格点击即走（Click-to-Move）：未按 Shift 且处于可交互状态时直接移动
+      if (interactive && !nativeEvent?.shiftKey && manhattan(player, target) === 1) {
+        const dir = DIRECTIONS.find(
+          (d) =>
+            d.delta.x === target.x - player.x &&
+            d.delta.y === target.y - player.y &&
+            d.delta.z === target.z - player.z,
+        );
+        if (dir) {
+          onMove(dir.id);
+          onSelect(target);
+          return;
+        }
+      }
+
+      onSelect(target);
     },
-    [onSelect],
+    [onSelect, onMove, player, interactive],
   );
 
   const handleFlag = useCallback(
@@ -551,6 +580,33 @@ function Scene({
     );
   });
 
+  // 6 个邻格的移动按键指引浮标
+  const moveBadges: { key: string; position: [number, number, number]; label: string }[] = [];
+  if (moveHints && !firstPerson && interactive) {
+    const keyLabels: Record<DirectionId, string> = {
+      forward: 'W',
+      back: 'S',
+      left: 'A',
+      right: 'D',
+      up: 'E',
+      down: 'Q',
+    };
+    for (const dir of DIRECTIONS) {
+      const neighborPos = addDelta(player, dir.delta);
+      if (!inBounds(dims, neighborPos)) continue;
+      const keyId =
+        (Object.keys(directionMap) as DirectionId[]).find((k) => directionMap[k] === dir.id) ??
+        dir.id;
+      const keyLetter = keyLabels[keyId] ?? dir.key;
+      const [nx, ny, nz] = worldPosition(neighborPos, dims);
+      moveBadges.push({
+        key: `hint-${dir.id}`,
+        position: [nx, ny + 0.38, nz],
+        label: `hint:${keyLetter}`,
+      });
+    }
+  }
+
   const outline = (position: Position, color: string, scale: number, key?: string) => (
     <lineSegments
       key={key}
@@ -584,6 +640,9 @@ function Scene({
       {analysisBadges.map((badge) => (
         <AnalysisBadge key={badge.key} position={badge.position} label={badge.label} />
       ))}
+      {moveBadges.map((badge) => (
+        <AnalysisBadge key={badge.key} position={badge.position} label={badge.label} />
+      ))}
       {selected ? outline(selected, '#facc15', 0.97) : null}
       {hovered ? outline(hovered, '#f8fafc', 1.02) : null}
       {firstPerson ? null : <PlayerMarker position={worldPosition(player, dims)} />}
@@ -608,7 +667,10 @@ export interface GameBoard3DProps {
   interactive: boolean;
   gameId: number;
   focusToken: number;
+  directionMap: DirectionMap;
+  moveHints: boolean;
   onViewForwardChange: (forward: DirectionId) => void;
+  onMove: (direction: DirectionId) => void;
   onSelect: (position: Position | null) => void;
   onFlag: (position: Position) => void;
 }
