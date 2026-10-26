@@ -192,6 +192,36 @@ describe('隐藏终点', () => {
 });
 
 describe('隐藏终点不会通过其他途径泄露位置', () => {
+  it('半径 2 的开局预探索不会提前探索隐藏终点或显示其数字', () => {
+    const state = startWith({
+      dims: { x: 3, y: 3, z: 3 },
+      mineDensity: 0.05,
+      rockDensity: 0,
+      difficulty: {
+        ...DEFAULT_DIFFICULTY,
+        showEndPosition: false,
+        showEndNumber: false,
+        prescoutRadius: 2,
+      },
+    });
+    const map = state.map!;
+    const endCell = map.cells[positionToIndex(map.dims, map.end)]!;
+
+    expect(state.status).toBe('playing');
+    expect(endCell.explored).toBe(false);
+    const visual = getCellVisual(endCell, {
+      player: state.player,
+      start: map.start,
+      end: map.end,
+      slice: fullSlice,
+      revealAllMines: false,
+      showEnd: false,
+      showEndNumber: false,
+    });
+    expect(visual.kind).toBe('unknown');
+    expect(visual.label).toBe('');
+  });
+
   it('终点可见时不能插旗，被隐藏时可以插旗（否则"插不了旗"本身就是提示）', () => {
     const visible = startWith({});
     const flaggedVisible = gameReducer(visible, {

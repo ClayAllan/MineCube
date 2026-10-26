@@ -165,7 +165,7 @@ function buildConstraints(
       if (isAssumedMine(neighborCell)) assumed += 1;
       else if (unknown.has(neighborIndex)) cells.push(neighborIndex);
     }
-    if (cells.length === 0) return;
+    // 即使没有未知邻格也保留约束：剩余雷数非 0 时必须报告矛盾。
     constraints.push({
       origin,
       originIndex: positionToIndex(map.dims, origin),
@@ -241,7 +241,8 @@ function deduce(
     return true;
   };
 
-  for (let pass = 0; pass < 12; pass += 1) {
+  // 每轮至少确定一个新格；最多 unknown.size 轮有变化，再跑一轮即可到达不动点。
+  for (let pass = 0; pass <= unknown.size; pass += 1) {
     let changed = false;
 
     // 规则 1：基本规则
@@ -304,7 +305,11 @@ function deduce(
       );
     }
   }
-  if (mineBudget < 0) contradictions.push('已标记的地雷数量超过了地图上的地雷总数');
+  if (mineBudget < 0) {
+    contradictions.push('已标记或推出的地雷数量超过了地图上的地雷总数');
+  } else if (mineBudget > freeCells) {
+    contradictions.push('剩余地雷数量超过了尚未确定的未知格数量');
+  }
 }
 
 // ------------------------------------------------------------ 精确概率枚举 ---
@@ -465,6 +470,8 @@ function enumerateComponent(component: {
 
   step(0, 0);
   if (aborted) return empty;
+  // 搜索完整但没有任何合法赋值，与搜索预算耗尽是两种不同情况。
+  if (ways.length === 0) return { ...empty, exact: true };
 
   const maxK = ways.length;
   for (let k = 0; k < maxK; k += 1) if (ways[k] === undefined) ways[k] = 0;
@@ -528,12 +535,27 @@ export function analyze(
   const decidedMines = [...verdicts.values()].filter((v) => v === 'mine').length;
   const budget = remainingMines - decidedMines;
 
-  const exactResults = results.filter((r) => r.exact);
-  const allExact = results.length === exactResults.length;
+  const unsatisfiableComponent = results.some(
+    (result) => result.exact && !result.ways.some((count) => count > 0),
+  );
+  if (unsatisfiableComponent) {
+    contradictions.push('当前线索之间存在矛盾，没有满足全部局部约束的布雷方案');
+  }
 
-  if (exactResults.length > 0 && budget >= 0) {
-    // 前缀 / 后缀卷积，用于快速求出"除某个分量外其余分量"的雷数分布
-    const distributions = exactResults.map((r) => r.ways);
+  let allExact = results.every(
+    (result) => result.exact && result.ways.some((count) => count > 0),
+  );
+
+  // 全局预算应当落在尚未确定的未知格数量范围内。
+  const unresolvedCount = unknown.size - verdicts.size;
+  if (budget < 0 || budget > unresolvedCount) {
+    contradictions.push('全局地雷总数与剩余未知格数量不一致');
+  }
+
+  if (contradictions.length === 0 && allExact) {
+    // 前缀 / 后缀卷积：ways[k] 表示所有约束分量共放 k 颗雷的方案数。
+    // 没有约束分量时分布为 [1]，因此「全是海格」也能正确计算。
+    const distributions = results.map((result) => result.ways);
     const prefix: number[][] = [[1]];
     for (let i = 0; i < distributions.length; i += 1) {
       prefix.push(convolve(prefix[i]!, distributions[i]!));
@@ -544,79 +566,154 @@ export function analyze(
       suffix[i] = convolve(distributions[i]!, suffix[i + 1]!);
     }
 
-    // 海里放 r 颗雷的组合数（对数），用最大值归一化避免溢出
+    const allWays = prefix[distributions.length]!;
     const seaLog = (r: number) => logChoose(seaSize, r);
 
-    for (let ci = 0; ci < exactResults.length; ci += 1) {
-      const result = exactResults[ci]!;
-      const others = convolve(prefix[ci]!, suffix[ci + 1]!);
-
-      // tail[k] = Σ_others others[ko] * C(sea, budget - k - ko)
-      const tail: number[] = new Array(result.ways.length).fill(0);
-      const terms: { k: number; log: number; weight: number }[] = [];
-      for (let k = 0; k < result.ways.length; k += 1) {
-        for (let ko = 0; ko < others.length; ko += 1) {
-          if (others[ko] === 0) continue;
-          const log = seaLog(budget - k - ko);
-          if (log === Number.NEGATIVE_INFINITY) continue;
-          terms.push({ k, log, weight: others[ko]! });
-        }
-      }
-      if (terms.length === 0) continue;
-      const maxLog = Math.max(...terms.map((t) => t.log));
-      for (const term of terms) {
-        tail[term.k]! += term.weight * Math.exp(term.log - maxLog);
-      }
-
-      let total = 0;
-      for (let k = 0; k < result.ways.length; k += 1) total += result.ways[k]! * tail[k]!;
-      if (total <= 0) continue;
-
-      result.cells.forEach((cell, i) => {
-        let mineTotal = 0;
-        const row = result.mineWays[i]!;
-        for (let k = 0; k < row.length; k += 1) mineTotal += row[k]! * (tail[k] ?? 0);
-        const p = Math.max(0, Math.min(1, mineTotal / total));
-        probability.set(cell, p);
-        exactCells.add(cell);
-        // 枚举本身也能给出确定结论，比规则更强
-        if (p <= 1e-9 && !verdicts.has(cell)) verdicts.set(cell, 'safe');
-        else if (p >= 1 - 1e-9 && !verdicts.has(cell)) verdicts.set(cell, 'mine');
+    // 先验证全局雷数确实至少对应一种完整布雷方案。
+    const totalTerms: { k: number; logWeight: number }[] = [];
+    for (let k = 0; k < allWays.length; k += 1) {
+      if (allWays[k]! <= 0) continue;
+      const logCombination = seaLog(budget - k);
+      if (logCombination === Number.NEGATIVE_INFINITY) continue;
+      totalTerms.push({
+        k,
+        logWeight: Math.log(allWays[k]!) + logCombination,
       });
     }
 
-    // 海里的格子：剩余雷数均匀分布
-    if (seaSize > 0) {
-      let expectedInSea = budget;
-      for (const result of exactResults) {
-        let mean = 0;
-        let totalWays = 0;
+    if (totalTerms.length === 0) {
+      contradictions.push('局部线索与全局地雷总数不一致，没有满足全部约束的布雷方案');
+      allExact = false;
+    } else {
+      // 使用 log 权重归一化，避免组合数直接相乘造成数值溢出。
+      const globalMaxLog = Math.max(...totalTerms.map((term) => term.logWeight));
+      let totalWeight = 0;
+      for (const term of totalTerms) totalWeight += Math.exp(term.logWeight - globalMaxLog);
+
+      for (let ci = 0; ci < results.length; ci += 1) {
+        const result = results[ci]!;
+        const others = convolve(prefix[ci]!, suffix[ci + 1]!);
+        // tail[k] = 其他分量与海格共同形成的、与本分量 k 颗雷兼容的方案权重。
+        const tail: number[] = new Array(result.ways.length).fill(0);
+        const terms: { k: number; logWeight: number }[] = [];
         for (let k = 0; k < result.ways.length; k += 1) {
-          mean += k * result.ways[k]!;
-          totalWays += result.ways[k]!;
+          for (let ko = 0; ko < others.length; ko += 1) {
+            if (others[ko]! <= 0) continue;
+            const logCombination = seaLog(budget - k - ko);
+            if (logCombination === Number.NEGATIVE_INFINITY) continue;
+            terms.push({
+              k,
+              logWeight: Math.log(others[ko]!) + logCombination,
+            });
+          }
         }
-        if (totalWays > 0) expectedInSea -= mean / totalWays;
+        if (terms.length === 0) {
+          contradictions.push('无法将局部约束与全局地雷总数相匹配');
+          allExact = false;
+          break;
+        }
+        const maxLog = Math.max(...terms.map((term) => term.logWeight));
+        for (const term of terms) tail[term.k]! += Math.exp(term.logWeight - maxLog);
+
+        let total = 0;
+        for (let k = 0; k < result.ways.length; k += 1) {
+          total += result.ways[k]! * tail[k]!;
+        }
+        if (total <= 0) {
+          contradictions.push('无法计算有效的全局概率分布');
+          allExact = false;
+          break;
+        }
+
+        result.cells.forEach((cell, cellIndex) => {
+          let mineTotal = 0;
+          const row = result.mineWays[cellIndex]!;
+          for (let k = 0; k < row.length; k += 1) {
+            mineTotal += row[k]! * (tail[k] ?? 0);
+          }
+          const p = Math.max(0, Math.min(1, mineTotal / total));
+          probability.set(cell, p);
+          exactCells.add(cell);
+          // 完整枚举也能给出确定结论。
+          if (p <= 1e-9 && !verdicts.has(cell)) verdicts.set(cell, 'safe');
+          else if (p >= 1 - 1e-9 && !verdicts.has(cell)) verdicts.set(cell, 'mine');
+        });
       }
-      const seaProbability = Math.max(0, Math.min(1, expectedInSea / seaSize));
+
+      // 每个海格的概率 = 含该格为雷的全局方案数 / 全局方案总数。
+      // 对固定的分量雷数 k，分子使用 C(seaSize - 1, budget - k - 1)，
+      // 而不是用各分量「未加权平均雷数」近似剩余雷数。
+      if (contradictions.length === 0 && seaSize > 0 && totalWeight > 0) {
+        let mineWeight = 0;
+        for (let k = 0; k < allWays.length; k += 1) {
+          if (allWays[k]! <= 0) continue;
+          const logCombination = logChoose(seaSize - 1, budget - k - 1);
+          if (logCombination === Number.NEGATIVE_INFINITY) continue;
+          mineWeight += Math.exp(
+            Math.log(allWays[k]!) + logCombination - globalMaxLog,
+          );
+        }
+        const seaProbability = Math.max(0, Math.min(1, mineWeight / totalWeight));
+        for (const index of unknown) {
+          if (verdicts.has(index) || constrainedCells.has(index)) continue;
+          probability.set(index, seaProbability);
+          exactCells.add(index);
+          if (seaProbability <= 1e-9) verdicts.set(index, 'safe');
+          else if (seaProbability >= 1 - 1e-9) verdicts.set(index, 'mine');
+        }
+      }
+    }
+  } else if (contradictions.length === 0) {
+    // 有分量超过枚举预算时，不能把忽略该分量后得到的全局概率称为精确值。
+    allExact = false;
+    for (let ci = 0; ci < results.length; ci += 1) {
+      const result = results[ci]!;
+      const component = components[ci]!;
+      if (result.exact && result.ways.some((count) => count > 0)) {
+        const totalWays = result.ways.reduce((sum, count) => sum + count, 0);
+        if (totalWays > 0) {
+          result.cells.forEach((cell, cellIndex) => {
+            const mineWays = result.mineWays[cellIndex]!.reduce((sum, count) => sum + count, 0);
+            probability.set(cell, mineWays / totalWays);
+          });
+        }
+      } else {
+        // 超大分量退回局部约束估计，并明确将整体结果标为非精确。
+        for (const entry of component.constraints) {
+          if (entry.cells.size === 0) continue;
+          const local = Math.max(0, Math.min(1, entry.mines / entry.cells.size));
+          for (const cell of entry.cells) {
+            probability.set(cell, Math.max(probability.get(cell) ?? 0, local));
+          }
+        }
+      }
+    }
+
+    // 海格在近似模式下也应有概率；以各受约束格的局部估计扣减剩余雷预算。
+    if (seaSize > 0) {
+      let estimatedConstrainedMines = 0;
+      for (const cell of constrainedCells) {
+        if (!verdicts.has(cell)) estimatedConstrainedMines += probability.get(cell) ?? 0;
+      }
+      const seaProbability = Math.max(
+        0,
+        Math.min(1, (budget - estimatedConstrainedMines) / seaSize),
+      );
       for (const index of unknown) {
         if (verdicts.has(index) || constrainedCells.has(index)) continue;
         probability.set(index, seaProbability);
       }
     }
+  } else {
+    allExact = false;
   }
 
-  // 无法枚举的分量退回局部估计
-  for (const result of results) {
-    if (result.exact) continue;
-    for (const entry of live) {
-      if (entry.cells.size === 0) continue;
-      const local = entry.mines / entry.cells.size;
-      for (const cell of entry.cells) {
-        if (exactCells.has(cell)) continue;
-        probability.set(cell, Math.max(probability.get(cell) ?? 0, Math.max(0, Math.min(1, local))));
-      }
-    }
-    break;
+  // 一旦发现矛盾，就不展示任何看似确定的结论或概率。
+  if (contradictions.length > 0) {
+    allExact = false;
+    probability.clear();
+    exactCells.clear();
+    verdicts.clear();
   }
 
   // ---- 聚焦线索（只影响高亮） ----
@@ -664,7 +761,7 @@ export function analyze(
       verdict,
       probability:
         verdict === 'mine' ? 1 : verdict === 'safe' ? 0 : (probability.get(index) ?? 0),
-      exact: verdict !== 'unknown' || exactCells.has(index),
+      exact: contradictions.length === 0 && (verdict !== 'unknown' || exactCells.has(index)),
       isClue: focusIndices.has(index),
       inIntersection: intersectionSet.has(index),
     });
@@ -681,7 +778,7 @@ export function analyze(
     constraintCount: constraints.length,
     unknownCount: unknown.size,
     remainingMines,
-    exact: allExact,
+    exact: allExact && contradictions.length === 0,
   };
 }
 
