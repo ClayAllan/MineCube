@@ -269,6 +269,139 @@ describe('精确概率', () => {
   });
 });
 
+describe('全局概率约束与矛盾检测', () => {
+  it('没有任何有效约束分量时，仍按剩余雷数计算海格概率', () => {
+    const dims: Dims = { x: 9, y: 1, z: 1 };
+    const at = (x: number): Position => ({ x, y: 0, z: 0 });
+    const map = makeMap({
+      dims,
+      mines: [at(3)],
+      rocks: [at(1)],
+      start: at(0),
+      end: at(8),
+    });
+
+    const result = analyze(map, [], { useOrthogonal: true });
+    const unknown = [2, 3, 4, 5, 6, 7].map((x) => positionToIndex(dims, at(x)));
+
+    expect(result.exact).toBe(true);
+    for (const index of unknown) {
+      expect(result.cells.get(index)?.probability).toBeCloseTo(1 / 6, 6);
+      expect(result.cells.get(index)?.exact).toBe(true);
+    }
+  });
+
+  it('海格概率按全局方案数加权，而不是按分量的未加权平均雷数估计', () => {
+    const dims: Dims = { x: 5, y: 5, z: 5 };
+    const start: Position = { x: 0, y: 0, z: 0 };
+    const end: Position = { x: 4, y: 4, z: 4 };
+    const clueA: Position = { x: 1, y: 2, z: 2 };
+    const clueB: Position = { x: 3, y: 2, z: 2 };
+    const a: Position = { x: 0, y: 2, z: 2 };
+    const b: Position = { x: 2, y: 1, z: 2 };
+    const c: Position = { x: 2, y: 2, z: 2 };
+    const d: Position = { x: 4, y: 2, z: 2 };
+    const seaA: Position = { x: 0, y: 4, z: 2 };
+    const seaB: Position = { x: 4, y: 0, z: 2 };
+    const retained = new Set(
+      [start, end, clueA, clueB, a, b, c, d, seaA, seaB].map((p) => positionToIndex(dims, p)),
+    );
+    const rocks: Position[] = [];
+    for (let z = 0; z < dims.z; z += 1) {
+      for (let y = 0; y < dims.y; y += 1) {
+        for (let x = 0; x < dims.x; x += 1) {
+          const p = { x, y, z };
+          if (!retained.has(positionToIndex(dims, p))) rocks.push(p);
+        }
+      }
+    }
+
+    // 两条约束分别是 a+b+c=1、b+c+d=1；合法分量方案数按雷数分布为 ways[1]=2、ways[2]=1。
+    // 全局共有 2 颗雷且有 2 个海格，海格单格含雷概率为 (2 * C(1,0)) / (2 * C(2,1) + 1 * C(2,0)) = 0.4。
+    const map = makeMap({
+      dims,
+      mines: [a, d],
+      rocks,
+      explored: [clueA, clueB],
+      start,
+      end,
+    });
+    const result = analyze(map, []);
+    const pA = result.cells.get(positionToIndex(dims, seaA));
+    const pB = result.cells.get(positionToIndex(dims, seaB));
+
+    expect(result.contradictions).toHaveLength(0);
+    expect(result.exact).toBe(true);
+    expect(pA?.probability).toBeCloseTo(0.4, 6);
+    expect(pB?.probability).toBeCloseTo(0.4, 6);
+    expect(pA?.exact).toBe(true);
+  });
+
+  it('所有邻格都已被排除时，仍会检查与数字不符的旗帜', () => {
+    const dims: Dims = { x: 9, y: 1, z: 1 };
+    const at = (x: number): Position => ({ x, y: 0, z: 0 });
+    const map = makeMap({
+      dims,
+      mines: [at(2), at(6)],
+      rocks: [at(1)],
+      explored: [at(4)],
+      flagged: [at(3), at(5)],
+      start: at(0),
+      end: at(8),
+    });
+
+    const result = analyze(map, [], { useOrthogonal: true });
+    expect(result.contradictions.some((message) => message.includes('(4, 0, 0)'))).toBe(true);
+    expect(result.exact).toBe(false);
+    expect(result.definiteSafe).toHaveLength(0);
+    expect(result.definiteMines).toHaveLength(0);
+  });
+
+  it('完整枚举但没有任何合法布雷方案时，应报告矛盾而非精确结果', () => {
+    const dims: Dims = { x: 5, y: 5, z: 5 };
+    const start: Position = { x: 0, y: 0, z: 0 };
+    const end: Position = { x: 4, y: 4, z: 4 };
+    const clueA: Position = { x: 1, y: 2, z: 2 };
+    const clueB: Position = { x: 3, y: 2, z: 2 };
+    const shared: Position[] = [
+      { x: 2, y: 1, z: 2 },
+      { x: 2, y: 2, z: 2 },
+      { x: 2, y: 3, z: 2 },
+    ];
+    const seaMine: Position = { x: 4, y: 4, z: 0 };
+    const retained = new Set(
+      [start, end, clueA, clueB, ...shared, seaMine].map((p) => positionToIndex(dims, p)),
+    );
+    const rocks: Position[] = [];
+    for (let z = 0; z < dims.z; z += 1) {
+      for (let y = 0; y < dims.y; y += 1) {
+        for (let x = 0; x < dims.x; x += 1) {
+          const p = { x, y, z };
+          if (!retained.has(positionToIndex(dims, p))) rocks.push(p);
+        }
+      }
+    }
+    const map = makeMap({
+      dims,
+      mines: [seaMine],
+      rocks,
+      explored: [clueA, clueB],
+      start,
+      end,
+    });
+    const clueAIndex = positionToIndex(dims, clueA);
+    const clueBIndex = positionToIndex(dims, clueB);
+    map.cells[clueAIndex] = { ...map.cells[clueAIndex]!, adjacentMineCount: 1 };
+    map.cells[clueBIndex] = { ...map.cells[clueBIndex]!, adjacentMineCount: 2 };
+
+    const result = analyze(map, []);
+    expect(result.contradictions.some((message) => message.includes('没有满足全部局部约束'))).toBe(true);
+    expect(result.exact).toBe(false);
+    expect(result.definiteSafe).toHaveLength(0);
+    expect(result.definiteMines).toHaveLength(0);
+  });
+});
+
 describe('健壮性', () => {
   it('旗帜数量超过数字时给出矛盾提示', () => {
     const clue: Position = { x: 2, y: 2, z: 2 };

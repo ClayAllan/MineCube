@@ -543,6 +543,7 @@ function Scene({
         shape={style.shape}
         scale={style.scale}
         showEdges={!mergeEdges}
+        visualScale={dimmed ? 0.2 : 1}
         interactive={interactive && !dimmed}
         onSelect={handleSelect}
         onFlag={handleFlag}

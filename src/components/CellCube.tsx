@@ -38,6 +38,8 @@ export interface CellCubeProps {
   showEdges: boolean;
   /** 是否响应鼠标（切片外的格子不参与交互） */
   interactive: boolean;
+  /** 纯视觉缩放；不应随暂停 / 结算时的交互开关改变 */
+  visualScale?: number;
   /** 射线穿过的全部格子（由近及远），用于深度穿透点击 */
   onSelect: (chain: RayChain) => void;
   onFlag: (chain: RayChain) => void;
@@ -86,6 +88,7 @@ function CellCubeImpl({
   scale,
   showEdges,
   interactive,
+  visualScale = 1,
   onSelect,
   onFlag,
   onHover,
@@ -118,9 +121,9 @@ function CellCubeImpl({
       }
     : { raycast: NO_RAYCAST };
 
-  const { animatedScale } = useSpring({ 
-    animatedScale: interactive ? 1 : 0.2, 
-    config: { mass: 1, tension: 250, friction: 35 } 
+  const { animatedScale } = useSpring({
+    animatedScale: visualScale,
+    config: { mass: 1, tension: 250, friction: 35 },
   });
 
   return (
