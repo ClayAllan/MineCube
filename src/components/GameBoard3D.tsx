@@ -440,8 +440,8 @@ function Scene({
           : { key, index: 0 };
       const target = chain[chainRef.current.index]!;
 
-      // 相邻格点击即走（Click-to-Move）：未按 Shift 且处于可交互状态时直接移动
-      if (interactive && !nativeEvent?.shiftKey && manhattan(player, target) === 1) {
+      // 分析模式只选择线索；其余时候点击相邻格可直接移动。
+      if (interactive && !analysis.enabled && !nativeEvent?.shiftKey && manhattan(player, target) === 1) {
         const dir = DIRECTIONS.find(
           (d) =>
             d.delta.x === target.x - player.x &&
@@ -457,7 +457,7 @@ function Scene({
 
       onSelect(target);
     },
-    [onSelect, onMove, player, interactive],
+    [onSelect, onMove, player, interactive, analysis.enabled],
   );
 
   const handleFlag = useCallback(
@@ -572,6 +572,7 @@ function Scene({
         shape={style.shape}
         scale={style.scale}
         showEdges={!mergeEdges}
+        visualScale={dimmed ? 0.2 : 1}
         interactive={interactive && !dimmed}
         onSelect={handleSelect}
         onFlag={handleFlag}

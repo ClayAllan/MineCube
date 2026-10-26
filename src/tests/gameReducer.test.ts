@@ -470,6 +470,7 @@ describe('开始 / 重开', () => {
     state = gameReducer(state, { type: 'BACK_TO_SETUP' });
     expect(state.status).toBe('setup');
     expect(state.map).toBeNull();
+    expect(state.config.seed).not.toBe('bbb');
   });
 });
 

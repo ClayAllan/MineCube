@@ -107,7 +107,8 @@ function applyPrescout(map: GameMap, radius: number): GameMap {
         if (!inBounds(dims, p)) continue;
         const index = positionToIndex(dims, p);
         const cell = cells[index]!;
-        if (cell.type === 'mine' || cell.type === 'rock' || cell.explored) continue;
+        // 预探索不能提前暴露隐藏终点的身份或数字。
+        if (cell.type === 'mine' || cell.type === 'rock' || cell.type === 'end' || cell.explored) continue;
         cells[index] = { ...cell, explored: true };
       }
     }

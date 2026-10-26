@@ -9,6 +9,7 @@ export interface LayerMinimapProps {
   selected: Position | null;
   slice: SliceState;
   revealEnd: boolean;
+  moveOnClick: boolean;
   onMove: (direction: DirectionId) => void;
   onSelect: (position: Position) => void;
   onFlag: (position: Position) => void;
@@ -43,6 +44,7 @@ function LayerMinimapImpl({
   selected,
   slice,
   revealEnd,
+  moveOnClick,
   onMove,
   onSelect,
   onFlag,
@@ -58,7 +60,7 @@ function LayerMinimapImpl({
   const handleCellClick = (pos: Position, e: React.MouseEvent) => {
     e.stopPropagation();
     // 如果是相邻格且未按 Shift，直接迈步进入
-    if (!e.shiftKey && manhattan(player, pos) === 1) {
+    if (moveOnClick && !e.shiftKey && manhattan(player, pos) === 1) {
       const dir = DIRECTIONS.find(
         (d) =>
           d.delta.x === pos.x - player.x &&
@@ -137,8 +139,8 @@ function LayerMinimapImpl({
           justifyContent: 'space-between',
         }}
       >
-        <span>↑ W(前) · ↓ S(后)</span>
-        <span>← A(左) · → D(右)</span>
+        <span>↑ Z− · ↓ Z+</span>
+        <span>← X− · → X+</span>
       </div>
 
       {/* 2D 网格：行代表 Z（由小到大，上到下），列代表 X（由小到大，左到右） */}

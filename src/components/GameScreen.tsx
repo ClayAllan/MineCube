@@ -309,13 +309,15 @@ export function GameScreen({
           <GameHUD state={state} playerCell={playerCell} />
           {showMinimap && map ? (
             <LayerMinimap
+              key={`${state.gameId}:${state.player.y}`}
               map={map}
               player={state.player}
               selected={state.selected}
               slice={state.slice}
               revealEnd={revealEnd}
+              moveOnClick={status === 'playing' && !state.analysis.enabled}
               onMove={(direction) => dispatch({ type: 'MOVE', direction })}
-              onSelect={(position) => dispatch({ type: 'SELECT_CELL', position })}
+              onSelect={handleSelect}
               onFlag={handleFlag}
             />
           ) : null}
